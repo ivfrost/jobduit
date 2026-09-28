@@ -9,7 +9,9 @@ import { ZodError } from 'zod';
 import { corsOptions } from './lib/cors.js';
 import { env } from './lib/env.js';
 import { sessionConfig } from './lib/session.js';
+import { requireAuth } from './middlewares/requireAuth.js';
 import v1 from './routes/apiRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 
@@ -19,11 +21,16 @@ app.use(session(sessionConfig));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-app.use('/api', v1);
+app.use('/api/auth', authRoutes);
+app.use('/api', requireAuth, v1);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+	if (res.headersSent) {
+		return _next(err as Error);
+	}
+
 	if (err instanceof ZodError) {
 		const fields: Record<string, string[]> = {};
 		for (const issue of err.issues) {
@@ -31,10 +38,6 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 			(fields[key] ??= []).push(issue.message);
 		}
 		return res.status(400).json({ error: 'Invalid input', fields });
-	}
-
-	if (res.headersSent) {
-		return _next(err as Error);
 	}
 
 	console.error(err);

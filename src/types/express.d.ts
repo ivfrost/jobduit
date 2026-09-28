@@ -1,9 +1,10 @@
-import type { User } from '../generated/prisma/client.js';
+import type { AuthUser } from '../middleware/requireAuth.js';
 
 declare global {
 	namespace Express {
 		interface Request {
-			user: User;
+			user: AuthUser;
+			authMethod: 'apiKey' | 'session';
 		}
 	}
 }
