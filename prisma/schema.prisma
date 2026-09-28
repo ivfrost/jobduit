@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,131 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum PostingStatus {
+  OPEN
+  CLOSED
+}
+
+enum WorkMode {
+  REMOTE
+  HYBRID
+  ONSITE
+}
+
+model Company {
+  id       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name     String
+  city     String       @default("")
+  country  String       @default("") // ISO 3166-1 alpha-2
+  postings JobPosting[]
+  userId   String       @db.Uuid
+  user     User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, name, city, country]) // per user, duplicate but simpler
+}
+
+model JobPosting {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String  @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  userId    String  @db.Uuid
+  user      User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  // Identity: normalized in the data layer (tracking params stripped) before saving
+  sourceUrl String
+  title     String
+
+  // Scraped
+  body           String?
+  postedAt       DateTime? // informational only, never drives logic
+  status         PostingStatus @default(OPEN)
+  applicantCount Int?
+  source         String? // LinkedIn, InfoJobs, etc
+
+  // Role location
+  workMode WorkMode?
+  city     String?
+  country  String? // ISO 3166-1 alpha-2
+
+  // Derived (LLM or parsing)
+  summary            String?
+  category           String?
+  tags               JobTag[]
+  minYearsExperience Int?
+  analyzedAt         DateTime?
+
+  capturedAt    DateTime @default(now())
+  lastCheckedAt DateTime @default(now()) // last time the extension saw the page
+  updatedAt     DateTime @updatedAt
+
+  applications Application[]
+
+  @@unique([userId, sourceUrl]) // per user, duplicate but simpler
+  @@index([companyId])
+}
+
+model JobTag {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String       @unique // lowercased and trimmed in the data layer
+  postings  JobPosting[]
+  createdAt DateTime     @default(now())
+}
+
+enum ApplicationStatus {
+  APPLIED
+  INTERVIEWING
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
+model User {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String        @unique
+  createdAt    DateTime      @default(now())
+  apiKeys      ApiKey[]
+  companies    Company[]
+  postings     JobPosting[]
+  applications Application[]
+}
+
+model ApiKey {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String // "laptop Firefox"
+  prefix     String // first few characters, shown in the UI
+  keyHash    String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+model ApplicationNote {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String      @db.Uuid
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+	title					String
+  body          String
+  createdAt     DateTime    @default(now())
+	updatedAt			DateTime		@updatedAt
+}
+
+model Application {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String            @db.Uuid
+  user      User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  postingId String            @db.Uuid
+  posting   JobPosting        @relation(fields: [postingId], references: [id], onDelete: Restrict)
+  status    ApplicationStatus @default(APPLIED) // extension handles "pending"
+  notes     ApplicationNote[]
+  appliedAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([postingId])
 }

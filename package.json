@@ -18,12 +18,14 @@
 	"license": "ISC",
 	"dependencies": {
 		"@prisma/client": "^7.10.0",
+		"cors": "^2.8.6",
 		"dotenv": "^18.0.4",
 		"dotenv-expand": "^1000.0.0",
 		"express": "^5.2.1"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
+		"@types/cors": "^2.8.19",
 		"@types/express": "^5.0.6",
 		"@types/node": "^26.6.3",
 		"prisma": "^7.10.0",
