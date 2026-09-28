@@ -185,5 +185,24 @@ describe('API key management', () => {
 
 			await request(testApp).delete(`/api/keys/${created.body.id}`).expect(401);
 		});
+
+		it('rejects API key auth for key management', async () => {
+			const created = await request(testApp)
+				.post('/api/keys')
+				.set('Cookie', cookie)
+				.send({ name: 'x' })
+				.expect(201);
+
+			await request(testApp)
+				.get('/api/keys')
+				.set('X-API-Key', created.body.raw)
+				.expect(403);
+
+			await request(testApp)
+				.post('/api/keys')
+				.set('X-API-Key', created.body.raw)
+				.send({ name: 'y' })
+				.expect(403);
+		});
 	});
 });
