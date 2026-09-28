@@ -11,24 +11,37 @@
 		"start": "node --enable-source-maps dist/app.js",
 		"format": "biome format --write .",
 		"lint": "biome check .",
-		"lint:fix": "biome lint --write ."
+		"lint:fix": "biome lint --write .",
+		"db:seed": "prisma db seed",
+		"admin:create": "tsx scripts/createAdmin.ts",
+		"admin:reset": "tsx scripts/resetPassword.ts"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
 		"@prisma/client": "^7.10.0",
+		"bcryptjs": "^3.0.3",
+		"connect-redis": "^9.0.0",
 		"cors": "^2.8.6",
 		"dotenv": "^18.0.4",
 		"dotenv-expand": "^1000.0.0",
-		"express": "^5.2.1"
+		"express": "^5.2.1",
+		"express-session": "^1.19.0",
+		"redis": "^6.2.1",
+		"pg": "^8.23.0",
+		"@prisma/adapter-pg": "^7.10.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
+		"@types/bcryptjs": "^2.4.6",
 		"@types/cors": "^2.8.19",
 		"@types/express": "^5.0.6",
+		"@types/express-session": "^1.19.0",
 		"@types/node": "^26.6.3",
 		"prisma": "^7.10.0",
+		"prisma-zod-generator": "^3.3.1",
+		"ts-node": "^10.9.2",
 		"tsx": "^4.23.15",
 		"typescript": "^7.0.2",
 		"zod": "^4.6.5"
