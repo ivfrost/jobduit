@@ -1,12 +1,11 @@
-import cors from 'cors';
+import type cors from 'cors';
 import { env } from './env.js';
 
 const IS_DEV = env.NODE_ENV === 'development';
 
-const allowedOrigins =
-	env.CHROME_EXTENSION_ID ?
-		[`chrome-extension://${env.CHROME_EXTENSION_ID}`]
-	:	[];
+const allowedOrigins = env.CHROME_EXTENSION_ID
+	? [`chrome-extension://${env.CHROME_EXTENSION_ID}`]
+	: [];
 
 const baseCorsOptions: cors.CorsOptions = {
 	methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -32,5 +31,6 @@ const prodCorsOptions: cors.CorsOptions = {
 	},
 };
 
-export const corsOptions: cors.CorsOptions =
-	IS_DEV ? devCorsOptions : prodCorsOptions;
+export const corsOptions: cors.CorsOptions = IS_DEV
+	? devCorsOptions
+	: prodCorsOptions;

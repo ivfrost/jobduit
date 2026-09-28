@@ -5,7 +5,7 @@ import { z } from 'zod';
 expand(dotenv.config());
 
 const schema = z.object({
-	NODE_ENV: z.enum(['development', 'production']).default('production'),
+	NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
 
 	DATABASE_URL: z
 		.url()

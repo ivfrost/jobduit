@@ -1,6 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
-import { randomBytes } from 'node:crypto';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { env } from '../src/lib/env.js';
 import { redis } from '../src/lib/redis.js';

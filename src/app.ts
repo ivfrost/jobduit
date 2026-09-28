@@ -7,7 +7,6 @@ import express, {
 import session from 'express-session';
 import { ZodError } from 'zod';
 import { corsOptions } from './lib/cors.js';
-import { env } from './lib/env.js';
 import { sessionConfig } from './lib/session.js';
 import { requireAuth } from './middlewares/requireAuth.js';
 import v1 from './routes/apiRoutes.js';
@@ -44,6 +43,4 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 	res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(env.PORT, () => {
-	console.log(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
-});
+export default app;

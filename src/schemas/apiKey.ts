@@ -13,3 +13,11 @@ export type ApiKeyStored = z.infer<typeof ApiKeyStoredSchema>;
 
 export const ApiKeyPublicSchema = ApiKeyStoredSchema.omit({ keyHash: true });
 export type ApiKeyPublic = z.infer<typeof ApiKeyPublicSchema>;
+
+export const ApiKeyCreateSchema = z.object({
+	name: z.string().min(1).max(100),
+});
+
+export const ApiKeyRevokeSchema = z.object({
+	id: z.string().uuid(),
+});

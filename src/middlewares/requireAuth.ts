@@ -1,5 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
 import { createHash } from 'node:crypto';
+import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 
 const publicUser = {

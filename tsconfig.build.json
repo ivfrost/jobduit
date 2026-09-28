@@ -1,0 +1,10 @@
+{
+	// Production build only; excludes tests, restores rootDir for dist layout
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "./src",
+		"outDir": "./dist"
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["**/*.test.ts", "tests/**"]
+}
