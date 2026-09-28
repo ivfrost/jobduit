@@ -1,0 +1,30 @@
+{
+	"type": "module",
+	"name": "jobduit",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"predev": "docker compose up -d --wait",
+		"dev": "tsx watch src/app.ts",
+		"build": "tsc",
+		"start": "node --enable-source-maps dist/app.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"@prisma/client": "^7.10.0",
+		"dotenv": "^18.0.4",
+		"dotenv-expand": "^1000.0.0",
+		"express": "^5.2.1"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.6",
+		"@types/node": "^26.6.3",
+		"prisma": "^7.10.0",
+		"tsx": "^4.23.15",
+		"typescript": "^7.0.2",
+		"zod": "^4.6.5"
+	}
+}
