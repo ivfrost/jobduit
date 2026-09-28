@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, inject, it } from 'vitest';
 import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../constants.js';
 import { createTestUser, resetDb } from '../helpers/db.js';
 
-process.env.DATABASE_URL = inject('databaseUrl' as never) as string;
-process.env.REDIS_URL = inject('redisUrl' as never) as string;
+process.env.DATABASE_URL = inject('databaseUrl');
+process.env.REDIS_URL = inject('redisUrl');
 
 const { default: testApp } = await import('../../src/app.js');
 const { prisma: testPrisma } = await import('../../src/lib/prisma.js');
@@ -17,9 +17,10 @@ const extractSid = (res: request.Response): string => {
 	const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
 	const sid = list.find((c) => c.startsWith('sid='));
 	if (!sid) throw new Error('sid cookie not set');
-	return sid.split(';')[0]!;
+	const [value] = sid.split(';');
+	if (!value) throw new Error('malformed sid cookie');
+	return value;
 };
-
 describe('API key management', () => {
 	beforeEach(async () => {
 		await resetDb(testPrisma);

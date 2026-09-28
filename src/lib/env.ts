@@ -27,6 +27,7 @@ const schema = z.object({
 
 	CHROME_EXTENSION_ID: z
 		.string()
+		.default('')
 		.transform((v) => (v === '' ? undefined : v))
 		.pipe(
 			z

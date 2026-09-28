@@ -7,11 +7,12 @@ import {
 	RedisContainer,
 	type StartedRedisContainer,
 } from '@testcontainers/redis';
+import type { TestProject } from 'vitest/node';
 
 let postgres: StartedPostgreSqlContainer;
 let redis: StartedRedisContainer;
 
-export async function setup(project: any) {
+export async function setup(project: TestProject) {
 	// Start Postgres
 	postgres = await new PostgreSqlContainer('postgres:17-alpine')
 		.withDatabase('jobduit_test')
@@ -33,12 +34,13 @@ export async function setup(project: any) {
 			env: { ...process.env, DATABASE_URL: databaseUrl, NODE_ENV: 'test' },
 			cwd: process.cwd(),
 		});
-	} catch (e: any) {
+	} catch (e) {
+		const err = e as { status?: number; stdout?: Buffer; stderr?: Buffer };
 		console.error('--- prisma migrate deploy failed ---');
-		console.error('exit code:', e.status);
+		console.error('exit code:', err.status);
 		console.error('DATABASE_URL passed:', databaseUrl);
-		console.error('stdout:', e.stdout?.toString());
-		console.error('stderr:', e.stderr?.toString());
+		console.error('stdout:', err.stdout?.toString());
+		console.error('stderr:', err.stderr?.toString());
 		throw e;
 	}
 

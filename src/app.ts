@@ -34,7 +34,8 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 		const fields: Record<string, string[]> = {};
 		for (const issue of err.issues) {
 			const key = issue.path.join('.') || '_root';
-			(fields[key] ??= []).push(issue.message);
+			if (!fields[key]) fields[key] = [];
+			fields[key].push(issue.message);
 		}
 		return res.status(400).json({ error: 'Invalid input', fields });
 	}
