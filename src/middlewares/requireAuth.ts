@@ -17,8 +17,16 @@ export type AuthUser = NonNullable<Awaited<ReturnType<typeof findUser>>>;
 const LAST_USED_THROTTLE_MS = 60_000;
 
 const extractApiKey = (req: Request): string | undefined => {
-	const header = req.headers['x-api-key'];
-	return typeof header === 'string' && header ? header : undefined;
+	const header = req.headers.authorization;
+	if (!header?.startsWith('Bearer ')) {
+		const xApiKeyHeader = req.headers['x-api-key'];
+		if (typeof xApiKeyHeader === 'string') {
+			return xApiKeyHeader;
+		}
+		return undefined;
+	}
+	const token = header.slice(7).trim();
+	return token || undefined;
 };
 
 export const requireAuth = async (

@@ -34,6 +34,7 @@ model Company {
   postings JobPosting[]
   userId   String       @db.Uuid
   user     User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  updatedAt DateTime    @updatedAt @default(now())
 
   @@unique([userId, name, city, country]) // per user, duplicate but simpler
 }
@@ -47,6 +48,9 @@ model JobPosting {
 
   // Identity: normalized in the data layer (tracking params stripped) before saving
   sourceUrl String
+  canonicalUrl String  @db.Text
+  contentHash  String  @db.VarChar(64)
+  sourceId     String? @db.VarChar(64)
   title     String
 
   // Scraped
@@ -67,6 +71,11 @@ model JobPosting {
   tags               JobTag[]
   minYearsExperience Int?
   analyzedAt         DateTime?
+  salaryMin      Int?
+  salaryMax      Int?
+  salaryCurrency String? @db.VarChar(3)
+  salaryPeriod   String? @db.VarChar(8) // 'YEAR' | 'MONTH' | 'DAY' | 'HOUR'
+  salaryRaw      String?
 
   capturedAt    DateTime @default(now())
   lastCheckedAt DateTime @default(now()) // last time the extension saw the page
@@ -74,7 +83,10 @@ model JobPosting {
 
   applications Application[]
 
-  @@unique([userId, sourceUrl]) // per user, duplicate but simpler
+  @@unique([userId, canonicalUrl]) // per user, duplicate but simpler
+  @@unique([userId, source, sourceId])
+  @@index([userId, contentHash])
+  @@index([userId, companyId, capturedAt])
   @@index([companyId])
 }
 

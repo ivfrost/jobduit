@@ -11,3 +11,7 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 if (env.NODE_ENV !== 'production') {
 	globalForPrisma.prisma = prisma;
 }
+
+export type PrismaClientOrTx = Parameters<
+	Parameters<typeof prisma.$transaction>[0]
+>[0];

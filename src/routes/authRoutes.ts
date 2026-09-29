@@ -1,13 +1,8 @@
 import { Router } from 'express';
-import * as z from 'zod';
+import { loginSchema } from '../schemas/auth.js';
 import authService from '../services/authService.js';
 
 const router = Router();
-
-const loginSchema = z.object({
-	email: z.email(),
-	password: z.string().min(1),
-});
 
 router.post('/login', async (req, res) => {
 	const { email, password } = loginSchema.parse(req.body);
@@ -23,7 +18,7 @@ router.post('/login', async (req, res) => {
 	req.session.userId = user.id;
 	return req.session.save((err) => {
 		if (err) return res.status(500).json({ error: 'Session failed' });
-		return res.json({ id: user.id, email: user.email, role: user.role });
+		return res.status(200).json({ message: 'Authenticated user' });
 	});
 });
 

@@ -5,10 +5,12 @@ import express, {
 	type Response,
 } from 'express';
 import session from 'express-session';
+import swaggerUi from 'swagger-ui-express';
 import { ZodError } from 'zod';
 import { corsOptions } from './lib/cors.js';
 import { sessionConfig } from './lib/session.js';
 import { requireAuth } from './middlewares/requireAuth.js';
+import { openApiDocument } from './openapi.js';
 import v1 from './routes/apiRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 
@@ -19,6 +21,8 @@ app.use(express.json());
 app.use(session(sessionConfig));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/openapi.json', (_req, res) => res.json(openApiDocument));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
 app.use('/api/auth', authRoutes);
 app.use('/api', requireAuth, v1);

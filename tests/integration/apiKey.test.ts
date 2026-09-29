@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, inject, it } from 'vitest';
 import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../constants.js';
+import { extractSid } from '../helpers/cookies.js';
 import { createTestUser, resetDb } from '../helpers/db.js';
 
 process.env.DATABASE_URL = inject('databaseUrl');
@@ -12,15 +13,6 @@ const { redis } = await import('../../src/lib/redis.js');
 
 let cookie!: string;
 
-const extractSid = (res: request.Response): string => {
-	const raw = res.headers['set-cookie'];
-	const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
-	const sid = list.find((c) => c.startsWith('sid='));
-	if (!sid) throw new Error('sid cookie not set');
-	const [value] = sid.split(';');
-	if (!value) throw new Error('malformed sid cookie');
-	return value;
-};
 describe('API key management', () => {
 	beforeEach(async () => {
 		await resetDb(testPrisma);

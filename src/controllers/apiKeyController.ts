@@ -43,6 +43,12 @@ export const revokeApiKey = async (req: Request, res: Response) => {
 	if (!apiKey) {
 		return res.status(404).json({ error: 'API key not found' });
 	}
+	if (apiKey.revokedAt) {
+		return res.status(400).json({ error: 'API key already revoked' });
+	}
+	if (apiKey.userId !== req.user.id) {
+		return res.status(403).json({ error: 'Forbidden' });
+	}
 
 	await prisma.apiKey.update({
 		where: { id },

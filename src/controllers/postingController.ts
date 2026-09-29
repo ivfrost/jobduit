@@ -7,29 +7,36 @@ import {
 } from '../schemas/postings.js';
 import postingService from '../services/postingService.js';
 
-export const createPosting = async (req: Request, res: Response) => {
+export const createOrUpdatePosting = async (req: Request, res: Response) => {
 	const input = createPostingSchema.parse(req.body);
-	const posting = await postingService.createPosting(req.user.id, input);
-	return res.status(201).json(posting);
+	const { posting, created } = await postingService.createOrUpdatePosting(
+		req.user?.id,
+		input,
+	);
+	return res.status(created ? 201 : 200).json(posting);
 };
 
-export const getPostings = async (req: Request, res: Response) => {
+export const findPostings = async (req: Request, res: Response) => {
 	const opts = getPostingsOptionsSchema.parse(req.query);
-	const postings = await postingService.getPostings(req.user.id, opts);
+	const postings = await postingService.findPostings(req.user.id, opts);
 	return res.json(postings);
 };
 
-export const getPosting = async (req: Request, res: Response) => {
-	const { id } = getPostingParamsSchema.parse(req.params);
-	const posting = await postingService.getPosting(req.user.id, id);
+export const findPosting = async (req: Request, res: Response) => {
+	const params = getPostingParamsSchema.parse(req.params);
+	const posting = await postingService.findPosting(req.user.id, params);
 	if (!posting) return res.status(404).json({ error: 'Not found' });
 	return res.json(posting);
 };
 
 export const updatePosting = async (req: Request, res: Response) => {
-	const { id } = getPostingParamsSchema.parse(req.params);
+	const params = getPostingParamsSchema.parse(req.params);
 	const input = updatePostingSchema.parse(req.body);
-	const posting = await postingService.updatePosting(req.user.id, id, input);
+	const posting = await postingService.updatePosting(
+		req.user.id,
+		params,
+		input,
+	);
 	if (!posting) return res.status(404).json({ error: 'Not found' });
 	return res.json(posting);
 };
@@ -39,4 +46,12 @@ export const deletePosting = async (req: Request, res: Response) => {
 	const deleted = await postingService.deletePosting(req.user.id, id);
 	if (!deleted) return res.status(404).json({ error: 'Not found' });
 	return res.status(204).end();
+};
+
+export default {
+	createPosting: createOrUpdatePosting,
+	findPostings,
+	findPosting,
+	updatePosting,
+	deletePosting,
 };

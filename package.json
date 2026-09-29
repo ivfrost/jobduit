@@ -31,7 +31,9 @@
 		"express": "^5.2.1",
 		"express-session": "^1.19.0",
 		"pg": "^8.23.0",
-		"redis": "^6.2.1"
+		"redis": "^6.2.1",
+		"swagger-ui-express": "^5.0.1",
+		"zod-openapi": "^6.0.2"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
@@ -43,6 +45,7 @@
 		"@types/express-session": "^1.19.0",
 		"@types/node": "^26.6.3",
 		"@types/supertest": "^7.2.1",
+		"@types/swagger-ui-express": "^4.1.8",
 		"@vitest/coverage-v8": "^4.1.11",
 		"prisma": "^7.10.0",
 		"prisma-zod-generator": "^3.3.1",

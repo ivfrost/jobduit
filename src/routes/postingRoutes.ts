@@ -1,17 +1,17 @@
 import { Router } from 'express';
 import {
-	createPosting,
+	createOrUpdatePosting,
 	deletePosting,
-	getPosting,
-	getPostings,
+	findPosting,
+	findPostings,
 	updatePosting,
 } from '../controllers/postingController.js';
 
 const router = Router();
 
-router.post('/', createPosting);
-router.get('/', getPostings);
-router.get('/:id', getPosting);
+router.post('/', createOrUpdatePosting);
+router.get('/', findPostings);
+router.get('/:id', findPosting);
 router.put('/:id', updatePosting);
 router.delete('/:id', deletePosting);
 

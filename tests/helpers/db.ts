@@ -2,6 +2,11 @@ import bcrypt from 'bcryptjs';
 import { SALT_ROUNDS } from '../../src/constants.js';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import { UserRole } from '../../src/generated/prisma/enums.js';
+import { generateApiKey } from '../../src/lib/apiKey.js';
+import {
+	type ApiKeyCreateInput,
+	ApiKeyCreateSchema,
+} from '../../src/schemas/apiKey.js';
 
 interface UserData {
 	email: string;
@@ -20,6 +25,23 @@ export const createTestUser = (
 			role: role || UserRole.USER,
 		},
 	});
+};
+
+export const createTestApiKey = async (
+	client: PrismaClient,
+	userId: string,
+	input: ApiKeyCreateInput,
+) => {
+	const parsed = ApiKeyCreateSchema.parse(input);
+	const { name } = parsed;
+
+	const { raw, prefix, keyHash } = generateApiKey();
+
+	const apiKey = await client.apiKey.create({
+		data: { userId: userId, name, prefix, keyHash },
+	});
+
+	return { raw, id: apiKey.id };
 };
 
 export async function resetDb(prisma: PrismaClient) {
