@@ -54,7 +54,7 @@ describe('extractApplicantCount', () => {
 	});
 
 	it('extracts a compact count', () => {
-		expect(extractApplicantCount('Over 2k candidates applied')).toBe(2);
+		expect(extractApplicantCount('Over 2k candidates applied')).toBe(2000);
 	});
 
 	it('returns null when not present', () => {

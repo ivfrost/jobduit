@@ -17,6 +17,7 @@ import { paginationResponseSchema } from './schemas/pagination.js';
 import {
 	createPostingSchema,
 	getPostingParamsSchema,
+	postingDetailResponseSchema,
 	postingResponseSchema,
 	updatePostingSchema,
 } from './schemas/postings.js';
@@ -26,6 +27,7 @@ const errorSchema = z.object({ error: z.string() }).meta({ id: 'Error' });
 const userSchema = publicUserSchema.meta({ id: 'User' });
 const companySchema = companyResponseSchema.meta({ id: 'Company' });
 const postingSchema = postingResponseSchema;
+const postingDetailSchema = postingDetailResponseSchema;
 const apiKeySchema = apiKeyResponseSchema.meta({ id: 'ApiKey' });
 const healthSchema = z.object({ ok: z.literal(true) }).meta({ id: 'Health' });
 
@@ -204,7 +206,7 @@ Session-only endpoints (auth, key management) are not exposed here — they requ
 					security: anyAuth,
 					requestParams: { path: getPostingParamsSchema },
 					responses: {
-						'200': response('Job posting.', postingSchema),
+						'200': response('Job posting.', postingDetailSchema),
 						'404': response('Posting not found.', errorSchema),
 					},
 				},

@@ -19,7 +19,8 @@ let apiKeyId!: string;
 const basePosting = {
 	sourceUrl: 'https://example.com/jobs/backend-engineer',
 	title: 'Backend Engineer',
-	company: { name: 'Acme', city: 'Madrid', country: 'ES' },
+	companyNameRaw: 'Acme',
+	capturedAt: '2026-10-01T00:00:00.000Z',
 };
 
 describe('Postings API', () => {
@@ -47,6 +48,30 @@ describe('Postings API', () => {
 	});
 
 	describe('via session cookie', () => {
+		it('rejects normalized, enriched, and nested company fields from the client', async () => {
+			await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({
+					...basePosting,
+					status: 'OPEN',
+					workMode: 'REMOTE',
+					salaryMin: 100000,
+					summary: 'Client supplied summary',
+					company: { name: 'Should not be accepted' },
+					tags: ['backend'],
+				})
+				.expect(400);
+		});
+
+		it('rejects unsupported posting sources', async () => {
+			await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({ ...basePosting, source: 'COMPANY_SITE' })
+				.expect(400);
+		});
+
 		it('creates a posting and its company', async () => {
 			const res = await request(testApp)
 				.post('/api/postings')
@@ -57,8 +82,53 @@ describe('Postings API', () => {
 			expect(res.body).toMatchObject({
 				title: basePosting.title,
 				sourceUrl: basePosting.sourceUrl,
-				company: { name: 'Acme', city: 'Madrid', country: 'ES' },
+				source: null,
+				company: { name: 'Acme', city: '', country: '' },
 			});
+		});
+
+		it('returns the complete enriched posting from the detail endpoint', async () => {
+			const created = await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({
+					...basePosting,
+					sourceUrl: 'https://example.com/jobs/enriched-detail',
+					body: 'Fully remote role. Salary: €60,000 per year.',
+				})
+				.expect(201);
+
+			await testPrisma.jobPosting.update({
+				where: { id: created.body.id },
+				data: {
+					summary: 'A fully remote backend role.',
+					category: 'ENGINEERING',
+					analyzedAt: new Date('2026-10-01T12:00:00.000Z'),
+					salaryRaw: '€60,000 per year',
+				},
+			});
+
+			const res = await request(testApp)
+				.get(`/api/postings/${created.body.id}`)
+				.set('Cookie', cookie)
+				.expect(200);
+
+			expect(res.body).toMatchObject({
+				id: created.body.id,
+				title: basePosting.title,
+				canonicalUrl: 'https://example.com/jobs/enriched-detail',
+				summary: 'A fully remote backend role.',
+				category: 'ENGINEERING',
+				analyzedAt: '2026-10-01T12:00:00.000Z',
+				salaryPeriod: 'YEAR',
+				company: { name: 'Acme' },
+				tags: [],
+			});
+			expect(res.body).not.toHaveProperty('body');
+			expect(res.body).not.toHaveProperty('salaryRaw');
+			expect(res.body).toHaveProperty('contentHash');
+			expect(res.body).toHaveProperty('updatedAt');
+			expect(res.body).toHaveProperty('lastCheckedAt');
 		});
 
 		it('updates instead of duplicating on repeated save', async () => {
@@ -114,11 +184,12 @@ describe('Postings API', () => {
 				sourceUrl: 'https://www.linkedin.com/jobs/view/4012345678',
 			};
 
-			await request(testApp)
+			const created = await request(testApp)
 				.post('/api/postings')
 				.set('Cookie', cookie)
 				.send(linkedinBase)
 				.expect(201);
+			expect(created.body.source).toBe('LINKED_IN');
 
 			await request(testApp)
 				.post('/api/postings')
@@ -142,7 +213,7 @@ describe('Postings API', () => {
 				.send({
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/no-location',
-					company: { name: 'Initech' },
+					companyNameRaw: 'Initech',
 				})
 				.expect(201);
 
@@ -225,6 +296,22 @@ describe('Postings API', () => {
 			});
 		});
 
+		it('matches the salary period nearest to the salary', async () => {
+			const res = await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({
+					...basePosting,
+					sourceUrl: 'https://example.com/jobs/monthly-salary',
+					body:
+						'5+ years of experience required. ' +
+						'Salary: €5,000 - €7,000 per month.',
+				})
+				.expect(201);
+
+			expect(res.body.salaryPeriod).toBe('MONTH');
+		});
+
 		it('prefers explicit fields over extracted ones', async () => {
 			const res = await request(testApp)
 				.post('/api/postings')
@@ -232,7 +319,7 @@ describe('Postings API', () => {
 				.send({
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/explicit-wins',
-					workMode: 'ONSITE',
+					workModeRaw: 'Onsite',
 					body: 'Fully remote position',
 				})
 				.expect(201);
@@ -253,6 +340,25 @@ describe('Postings API', () => {
 			expect(res.body.workMode).toBeNull();
 			expect(res.body.minYearsExperience).toBeNull();
 			expect(res.body.salaryMin).toBeNull();
+			expect(res.body.salaryPeriod).toBeNull();
+		});
+
+		it('keeps salary period null when the body does not specify one', async () => {
+			const res = await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({
+					...basePosting,
+					sourceUrl: 'https://example.com/jobs/salary-without-period',
+					salaryRaw: '100k-150k USD',
+					body: 'Salary range: 100k-150k USD.',
+				})
+				.expect(201);
+
+			expect(res.body.salaryMin).toBe(100000);
+			expect(res.body.salaryMax).toBe(150000);
+			expect(res.body.salaryCurrency).toBe('USD');
+			expect(res.body.salaryPeriod).toBeNull();
 		});
 
 		it('re-extracts when the body is updated', async () => {
@@ -276,11 +382,33 @@ describe('Postings API', () => {
 			expect(updated.body.minYearsExperience).toBe(3);
 		});
 
+		it('clears the previous salary period when the updated body omits it', async () => {
+			const created = await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({
+					...basePosting,
+					sourceUrl: 'https://example.com/jobs/update-salary-period',
+					body: 'Salary: €60,000 - €80,000 per year.',
+				})
+				.expect(201);
+
+			expect(created.body.salaryPeriod).toBe('YEAR');
+
+			const updated = await request(testApp)
+				.put(`/api/postings/${created.body.id}`)
+				.set('Cookie', cookie)
+				.send({ body: 'Salary range: €60,000 - €80,000.' })
+				.expect(200);
+
+			expect(updated.body.salaryPeriod).toBeNull();
+		});
+
 		it('matches by content hash when URLs differ', async () => {
 			await request(testApp)
 				.post('/api/postings')
 				.set('Cookie', cookie)
-				.send({ ...basePosting, source: 'LinkedIn' })
+				.send({ ...basePosting, source: 'LINKED_IN' })
 				.expect(201);
 
 			await request(testApp)
@@ -289,7 +417,7 @@ describe('Postings API', () => {
 				.send({
 					...basePosting,
 					sourceUrl: 'https://acme.com/careers/backend',
-					source: 'Company site',
+					source: null,
 				})
 				.expect(200);
 

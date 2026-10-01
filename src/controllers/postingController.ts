@@ -1,14 +1,14 @@
 import type { Request, Response } from 'express';
 import {
-	createPostingSchema,
 	getPostingParamsSchema,
 	getPostingsOptionsSchema,
+	postingCapturedSchema,
 	updatePostingSchema,
 } from '../schemas/postings.js';
 import postingService from '../services/postingService.js';
 
 export const createOrUpdatePosting = async (req: Request, res: Response) => {
-	const input = createPostingSchema.parse(req.body);
+	const input = postingCapturedSchema.parse(req.body);
 	const { posting, created } = await postingService.createOrUpdatePosting(
 		req.user?.id,
 		input,
@@ -40,6 +40,8 @@ export const updatePosting = async (req: Request, res: Response) => {
 	if (!posting) return res.status(404).json({ error: 'Not found' });
 	return res.json(posting);
 };
+
+export const analyzePosting = async (req: Request, res: Response) => {};
 
 export const deletePosting = async (req: Request, res: Response) => {
 	const { id } = getPostingParamsSchema.parse(req.params);

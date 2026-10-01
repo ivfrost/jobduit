@@ -13,10 +13,10 @@ export const canonicalizeUrl = (raw: string): string => {
 };
 
 const extractors: Record<string, RegExp> = {
-	LinkedIn: /\/jobs\/view\/(\d+)/,
-	Indeed: /[?&]jk=([a-z0-9]+)/i,
-	Greenhouse: /[?&]gh_jid=(\d+)/i,
-	Lever: /\/([a-f0-9-]{36})(?:\?|$)/i,
+	LINKED_IN: /\/jobs\/view\/(\d+)/,
+	INDEED: /[?&]jk=([a-z0-9]+)/i,
+	GREENHOUSE: /[?&]gh_jid=(\d+)/i,
+	LEVER: /\/([a-f0-9-]{36})(?:\?|$)/i,
 };
 
 export const extractSourceId = (

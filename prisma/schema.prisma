@@ -26,6 +26,13 @@ enum WorkMode {
   ONSITE
 }
 
+enum PostingSource {
+  LINKED_IN
+  INDEED
+  GREENHOUSE
+  LEVER
+}
+
 model Company {
   id       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name     String
@@ -58,7 +65,7 @@ model JobPosting {
   postedAt       DateTime? // informational only, never drives logic
   status         PostingStatus @default(OPEN)
   applicantCount Int?
-  source         String? // LinkedIn, InfoJobs, etc
+  source         PostingSource?
 
   // Role location
   workMode WorkMode?

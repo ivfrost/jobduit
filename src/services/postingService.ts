@@ -1,17 +1,26 @@
-import { extractFromBody } from '../lib/extract.js';
+import type { PostingSource } from '../generated/prisma/client.js';
+import {
+	extractFromBody,
+	extractMinYears,
+	extractSalary,
+	extractStatus,
+	extractWorkMode,
+	type PostingStatus,
+	type WorkMode,
+} from '../lib/extract.js';
 import {
 	canonicalizeUrl,
 	contentFingerprint,
 	extractSourceId,
 } from '../lib/postingIdentity.js';
 import { prisma } from '../lib/prisma.js';
-import {
-	type CreatePostingInput,
-	type GetPostingParams as FindPostingParams,
-	type GetPostingsOptions as FindPostingsOptions,
-	postingSelect,
-	type UpdatePostingInput,
+import type {
+	CreatePostingCapturedInput,
+	GetPostingParams as FindPostingParams,
+	GetPostingsOptions as FindPostingsOptions,
+	UpdatePostingCapturedInput,
 } from '../schemas/postings.js';
+import { postingDetailSelect, postingSelect } from '../schemas/postings.js';
 import { findOrCreateCompany } from './companyService.js';
 
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
@@ -20,7 +29,7 @@ const findExistingPosting = async (
 	tx: Tx,
 	userId: string,
 	canonicalUrl: string,
-	source: string | null,
+	source: PostingSource | null,
 	sourceId: string | null,
 	contentHash: string,
 ): Promise<string | null> => {
@@ -52,45 +61,81 @@ const findExistingPosting = async (
 
 export const createOrUpdatePosting = async (
 	userId: string,
-	input: CreatePostingInput,
+	input: CreatePostingCapturedInput,
 ) => {
-	const { company, tags, ...data } = input;
+	const {
+		companyNameRaw,
+		statusRaw,
+		workModeRaw,
+		experienceRaw,
+		salaryRaw,
+		locationRaw: _locationRaw,
+		...data
+	} = input;
 
 	const canonicalUrl = canonicalizeUrl(data.sourceUrl);
 	const sourceId = extractSourceId(data.sourceUrl, data.source);
 
-	// Best-effort extraction from the body. Explicit fields from the extension
-	// always win; extractors only fill gaps.
-	const extracted = extractFromBody(data.body);
-
-	const enriched = {
+	const bodyExtracted = extractFromBody(data.body);
+	const rawExtracted = {
+		status: statusRaw ? extractStatus(statusRaw) : null,
+		workMode: workModeRaw ? extractWorkMode(workModeRaw) : null,
+		minYearsExperience: experienceRaw ? extractMinYears(experienceRaw) : null,
+		salary: salaryRaw ? extractSalary(salaryRaw) : null,
+	};
+	const status: PostingStatus | undefined =
+		rawExtracted.status ?? bodyExtracted.status ?? undefined;
+	const workMode: WorkMode | null | undefined =
+		rawExtracted.workMode ?? bodyExtracted.workMode ?? null;
+	const derivedData = {
 		...data,
-		workMode: data.workMode ?? extracted.workMode ?? null,
+		status,
+		workMode,
 		minYearsExperience:
-			data.minYearsExperience ?? extracted.minYearsExperience ?? null,
-		applicantCount: data.applicantCount ?? extracted.applicantCount ?? null,
-		salaryMin: extracted.salary?.min ?? null,
-		salaryMax: extracted.salary?.max ?? null,
-		salaryCurrency: extracted.salary?.currency ?? null,
-		salaryPeriod: extracted.salary?.period ?? null,
-		salaryRaw: extracted.salary?.raw ?? null,
+			rawExtracted.minYearsExperience ??
+			bodyExtracted.minYearsExperience ??
+			null,
+		applicantCount: data.applicantCount ?? bodyExtracted.applicantCount ?? null,
+		salaryMin: rawExtracted.salary?.min ?? bodyExtracted.salary?.min ?? null,
+		salaryMax: rawExtracted.salary?.max ?? bodyExtracted.salary?.max ?? null,
+		salaryCurrency:
+			rawExtracted.salary?.currency ?? bodyExtracted.salary?.currency ?? null,
+		salaryPeriod: bodyExtracted.salary?.period ?? null,
+		salaryRaw:
+			salaryRaw ??
+			rawExtracted.salary?.raw ??
+			bodyExtracted.salary?.raw ??
+			null,
 	};
 
 	return prisma.$transaction(async (tx) => {
-		const { id: companyId } = await findOrCreateCompany(userId, company, tx);
+		const companyName = companyNameRaw;
+		if (!companyName) {
+			throw new Error('Posting company name is required');
+		}
+
+		const { id: companyId } = await findOrCreateCompany(
+			userId,
+			{
+				name: companyName,
+				city: '',
+				country: '',
+			},
+			tx,
+		);
 
 		const contentHash = contentFingerprint(
 			userId,
 			companyId,
-			enriched.title,
-			enriched.city ?? null,
+			derivedData.title,
+			null,
 		);
 
 		const existingId = await findExistingPosting(
 			tx,
 			userId,
 			canonicalUrl,
-			enriched.source ?? null,
+			derivedData.source ?? null,
 			sourceId,
 			contentHash,
 		);
@@ -98,17 +143,14 @@ export const createOrUpdatePosting = async (
 		const identity = { canonicalUrl, contentHash, sourceId };
 
 		const tagOps = {
-			connectOrCreate: (tags ?? []).map((name) => ({
-				where: { name },
-				create: { name },
-			})),
+			connectOrCreate: [],
 		};
 
 		if (existingId) {
 			const posting = await tx.jobPosting.update({
 				where: { id: existingId },
 				data: {
-					...enriched,
+					...derivedData,
 					...identity,
 					companyId,
 					lastCheckedAt: new Date(),
@@ -121,7 +163,7 @@ export const createOrUpdatePosting = async (
 
 		const posting = await tx.jobPosting.create({
 			data: {
-				...enriched,
+				...derivedData,
 				...identity,
 				userId,
 				companyId,
@@ -168,66 +210,94 @@ export const findPosting = async (
 	const { id } = params;
 	return prisma.jobPosting.findFirst({
 		where: { id, userId },
-		select: postingSelect,
+		select: postingDetailSelect,
 	});
 };
 
 export const updatePosting = async (
 	userId: string,
 	params: FindPostingParams,
-	input: UpdatePostingInput,
+	input: UpdatePostingCapturedInput,
 ) => {
 	const { id } = params;
-	const { company, tags, ...data } = input;
+	const {
+		companyNameRaw,
+		statusRaw,
+		workModeRaw,
+		experienceRaw,
+		salaryRaw,
+		locationRaw: _locationRaw,
+		...data
+	} = input;
 
-	// Re-run extractors only if body is being updated
-	const extracted = data.body ? extractFromBody(data.body) : {};
+	const bodyExtracted = data.body ? extractFromBody(data.body) : {};
+	const rawExtracted = {
+		status: statusRaw ? extractStatus(statusRaw) : null,
+		workMode: workModeRaw ? extractWorkMode(workModeRaw) : null,
+		minYearsExperience: experienceRaw ? extractMinYears(experienceRaw) : null,
+		salary: salaryRaw ? extractSalary(salaryRaw) : null,
+	};
+	const status: PostingStatus | undefined =
+		rawExtracted.status ?? bodyExtracted.status ?? undefined;
+	const workMode: WorkMode | undefined =
+		rawExtracted.workMode ?? bodyExtracted.workMode ?? undefined;
 
-	const enriched = {
+	const derivedData = {
 		...data,
-		workMode: data.workMode ?? extracted.workMode ?? undefined,
+		status,
+		workMode,
 		minYearsExperience:
-			data.minYearsExperience ?? extracted.minYearsExperience ?? undefined,
-		applicantCount:
-			data.applicantCount ?? extracted.applicantCount ?? undefined,
+			rawExtracted.minYearsExperience ??
+			bodyExtracted.minYearsExperience ??
+			undefined,
+		applicantCount: data.applicantCount ?? bodyExtracted.applicantCount,
+		salaryMin:
+			rawExtracted.salary?.min ?? bodyExtracted.salary?.min ?? undefined,
+		salaryMax:
+			rawExtracted.salary?.max ?? bodyExtracted.salary?.max ?? undefined,
+		salaryCurrency:
+			rawExtracted.salary?.currency ??
+			bodyExtracted.salary?.currency ??
+			undefined,
+		salaryPeriod:
+			data.body !== undefined
+				? (bodyExtracted.salary?.period ?? null)
+				: undefined,
+		salaryRaw:
+			salaryRaw ??
+			rawExtracted.salary?.raw ??
+			bodyExtracted.salary?.raw ??
+			undefined,
 	};
 
+	const existing = await prisma.jobPosting.findFirst({
+		where: { id, userId },
+		select: { id: true },
+	});
+	if (!existing) return null;
+
 	let companyId: string | undefined;
-	if (company) {
-		const c = await prisma.company.upsert({
-			where: {
-				userId_name_city_country: {
-					userId,
-					name: company.name,
-					city: company.city ?? '',
-					country: company.country ?? '',
-				},
-			},
-			update: {},
-			create: { userId, ...company },
-			select: { id: true },
+	if (companyNameRaw) {
+		const companyName = companyNameRaw;
+		if (!companyName) {
+			throw new Error('Posting company name is required');
+		}
+
+		const companyResult = await findOrCreateCompany(userId, {
+			name: companyName,
+			city: '',
+			country: '',
 		});
-		companyId = c.id;
+		companyId = companyResult.id;
 	}
 
-	const { count } = await prisma.jobPosting.updateMany({
-		where: { id, userId },
+	await prisma.jobPosting.update({
+		where: { id: existing.id },
 		data: {
-			...enriched,
+			...derivedData,
 			...(companyId && { companyId }),
-			...(tags && {
-				tags: {
-					set: [],
-					connectOrCreate: tags.map((name: string) => ({
-						where: { name },
-						create: { name },
-					})),
-				},
-			}),
 		},
 	});
-
-	if (count === 0) return null;
 
 	return prisma.jobPosting.findFirst({
 		where: { id, userId },

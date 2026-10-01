@@ -11,6 +11,6 @@ export default defineConfig({
 			SESSION_SECRET: 'test_session_secret_0000000000000000000000000000',
 			CHROME_EXTENSION_ID: '',
 		},
-		exclude: ['node_modules', 'dist'],
+		exclude: ['node_modules', 'dist', '.kilo'],
 	},
 });

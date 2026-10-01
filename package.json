@@ -7,7 +7,7 @@
 	"scripts": {
 		"predev": "docker compose up -d --wait",
 		"dev": "tsx watch src/server.ts",
-		"build": "tsc",
+		"build": "tsc -p tsconfig.build.json",
 		"start": "node --enable-source-maps dist/server.js",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",

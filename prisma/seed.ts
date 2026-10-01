@@ -4,6 +4,11 @@ import bcrypt from 'bcryptjs';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { generateApiKey } from '../src/lib/apiKey.js';
 import { env } from '../src/lib/env.js';
+import {
+	canonicalizeUrl,
+	contentFingerprint,
+	extractSourceId,
+} from '../src/lib/postingIdentity.js';
 
 const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -73,14 +78,23 @@ async function main() {
 	});
 
 	// Job postings
+	const acmeSourceUrl = 'https://example.com/jobs/acme-senior-ts';
 	const acmePosting = await prisma.jobPosting.create({
 		data: {
 			userId: admin.id,
 			companyId: acme.id,
-			sourceUrl: 'https://example.com/jobs/acme-senior-ts',
+			sourceUrl: acmeSourceUrl,
+			canonicalUrl: canonicalizeUrl(acmeSourceUrl),
+			contentHash: contentFingerprint(
+				admin.id,
+				acme.id,
+				'Senior TypeScript Engineer',
+				'Berlin',
+			),
+			sourceId: extractSourceId(acmeSourceUrl, 'LINKED_IN'),
 			title: 'Senior TypeScript Engineer',
 			body: 'Build things with TypeScript. Remote-friendly.',
-			source: 'LinkedIn',
+			source: 'LINKED_IN',
 			status: 'OPEN',
 			workMode: 'REMOTE',
 			city: 'Berlin',
@@ -102,13 +116,22 @@ async function main() {
 		},
 	});
 
+	const globexFullstackSourceUrl = 'https://example.com/jobs/globex-fullstack';
 	await prisma.jobPosting.create({
 		data: {
 			userId: admin.id,
 			companyId: globex.id,
-			sourceUrl: 'https://example.com/jobs/globex-fullstack',
+			sourceUrl: globexFullstackSourceUrl,
+			canonicalUrl: canonicalizeUrl(globexFullstackSourceUrl),
+			contentHash: contentFingerprint(
+				admin.id,
+				globex.id,
+				'Fullstack Developer',
+				'Madrid',
+			),
+			sourceId: extractSourceId(globexFullstackSourceUrl, 'INDEED'),
 			title: 'Fullstack Developer',
-			source: 'InfoJobs',
+			source: 'INDEED',
 			status: 'OPEN',
 			workMode: 'HYBRID',
 			city: 'Madrid',
@@ -119,13 +142,22 @@ async function main() {
 		},
 	});
 
+	const globexOldSourceUrl = 'https://example.com/jobs/globex-old';
 	await prisma.jobPosting.create({
 		data: {
 			userId: admin.id,
 			companyId: globex.id,
-			sourceUrl: 'https://example.com/jobs/globex-old',
+			sourceUrl: globexOldSourceUrl,
+			canonicalUrl: canonicalizeUrl(globexOldSourceUrl),
+			contentHash: contentFingerprint(
+				admin.id,
+				globex.id,
+				'Junior Developer',
+				'Madrid',
+			),
+			sourceId: extractSourceId(globexOldSourceUrl, 'GREENHOUSE'),
 			title: 'Junior Developer',
-			source: 'InfoJobs',
+			source: 'GREENHOUSE',
 			status: 'CLOSED',
 			workMode: 'ONSITE',
 			city: 'Madrid',
