@@ -4,6 +4,8 @@ import { z } from 'zod';
 
 expand(dotenv.config());
 
+const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value);
+
 const schema = z.object({
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
 
@@ -35,6 +37,17 @@ const schema = z.object({
 				.regex(/^[a-p]{32}$/, 'Must be a 32-char Chrome extension ID')
 				.optional(),
 		),
+
+	// An empty value means "enrichment off", which is how the test suite keeps
+	// itself from calling a real API.
+	LLM_PROVIDER: z.preprocess(
+		emptyToUndefined,
+		z.enum(['deepseek', 'gemini', 'anthropic']).optional(),
+	),
+	LLM_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+	// Free-form: model names churn, and each provider names them differently.
+	// e.g. deepseek-chat, gemini-2.5-flash, claude-opus-5-5
+	LLM_MODEL_NAME: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 });
 
 const parsed = schema.safeParse(process.env);

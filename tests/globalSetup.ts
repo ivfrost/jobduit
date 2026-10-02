@@ -18,14 +18,13 @@ export async function setup(project: TestProject) {
 		.withDatabase('jobduit_test')
 		.withUsername('test')
 		.withPassword('test')
-		.withReuse()
 		.start();
 
 	// Start Redis
-	redis = await new RedisContainer('redis:8-alpine').withReuse().start();
+	redis = await new RedisContainer('redis:8-alpine').start();
 
 	const databaseUrl = postgres.getConnectionUri();
-	const redisUrl = redis.getConnectionUrl();
+	const redisUrl = redis.getConnectionUrl().replace('localhost', '127.0.0.1');
 
 	// Apply Prisma migrations to the fresh Postgres container.
 	// This must happen after the container is up and before tests run.

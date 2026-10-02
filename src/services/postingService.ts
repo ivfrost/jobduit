@@ -1,13 +1,18 @@
 import type { PostingSource } from '../generated/prisma/client.js';
+import { env } from '../lib/env.js';
 import {
+	extractApplicantCount,
 	extractFromBody,
+	extractLocation,
 	extractMinYears,
+	extractPostedAt,
 	extractSalary,
 	extractStatus,
 	extractWorkMode,
 	type PostingStatus,
 	type WorkMode,
 } from '../lib/extract.js';
+import { analyzePostingWithLLM } from '../lib/llm.js';
 import {
 	canonicalizeUrl,
 	contentFingerprint,
@@ -16,8 +21,8 @@ import {
 import { prisma } from '../lib/prisma.js';
 import type {
 	CreatePostingCapturedInput,
-	GetPostingParams as FindPostingParams,
-	GetPostingsOptions as FindPostingsOptions,
+	FindPostingParams,
+	FindPostingsOptions,
 	UpdatePostingCapturedInput,
 } from '../schemas/postings.js';
 import { postingDetailSelect, postingSelect } from '../schemas/postings.js';
@@ -69,14 +74,19 @@ export const createOrUpdatePosting = async (
 		workModeRaw,
 		experienceRaw,
 		salaryRaw,
-		locationRaw: _locationRaw,
+		locationRaw,
+		postedAtRaw,
+		applicantCountRaw,
 		...data
 	} = input;
 
+	const location = extractLocation(locationRaw);
+	const postedAt = extractPostedAt(postedAtRaw, data.capturedAt);
+	const applicantCount = extractApplicantCount(applicantCountRaw);
 	const canonicalUrl = canonicalizeUrl(data.sourceUrl);
 	const sourceId = extractSourceId(data.sourceUrl, data.source);
 
-	const bodyExtracted = extractFromBody(data.body);
+	const bodyExtracted = extractFromBody(data.bodyMarkdown);
 	const rawExtracted = {
 		status: statusRaw ? extractStatus(statusRaw) : null,
 		workMode: workModeRaw ? extractWorkMode(workModeRaw) : null,
@@ -91,11 +101,14 @@ export const createOrUpdatePosting = async (
 		...data,
 		status,
 		workMode,
+		city: location.city,
+		country: location.country,
+		postedAt,
 		minYearsExperience:
 			rawExtracted.minYearsExperience ??
 			bodyExtracted.minYearsExperience ??
 			null,
-		applicantCount: data.applicantCount ?? bodyExtracted.applicantCount ?? null,
+		applicantCount: applicantCount ?? bodyExtracted.applicantCount ?? null,
 		salaryMin: rawExtracted.salary?.min ?? bodyExtracted.salary?.min ?? null,
 		salaryMax: rawExtracted.salary?.max ?? bodyExtracted.salary?.max ?? null,
 		salaryCurrency:
@@ -142,10 +155,9 @@ export const createOrUpdatePosting = async (
 
 		const identity = { canonicalUrl, contentHash, sourceId };
 
-		const tagOps = {
-			connectOrCreate: [],
-		};
-
+		// Enrichment owns summary, category, tags and analyzedAt. They are
+		// deliberately absent from both writes: a re-capture refreshes what the
+		// extension scraped, never what the LLM produced.
 		if (existingId) {
 			const posting = await tx.jobPosting.update({
 				where: { id: existingId },
@@ -154,9 +166,8 @@ export const createOrUpdatePosting = async (
 					...identity,
 					companyId,
 					lastCheckedAt: new Date(),
-					tags: { set: [], ...tagOps },
 				},
-				select: postingSelect,
+				select: postingDetailSelect,
 			});
 			return { posting, created: false };
 		}
@@ -167,9 +178,8 @@ export const createOrUpdatePosting = async (
 				...identity,
 				userId,
 				companyId,
-				tags: tagOps,
 			},
-			select: postingSelect,
+			select: postingDetailSelect,
 		});
 		return { posting, created: true };
 	});
@@ -184,7 +194,7 @@ export const findPostings = async (
 	const [data, total] = await Promise.all([
 		prisma.jobPosting.findMany({
 			where,
-			orderBy: opts.orderBy ?? { capturedAt: 'desc' },
+			orderBy: opts.orderBy.map((field) => ({ [field]: opts.orderDirection })),
 			take: opts.take,
 			skip: opts.skip,
 			select: postingSelect,
@@ -214,6 +224,39 @@ export const findPosting = async (
 	});
 };
 
+export const analyzePosting = async (
+	userId: string,
+	params: FindPostingParams,
+) => {
+	if (!env.LLM_PROVIDER || !env.LLM_API_KEY) return;
+	const { id } = params;
+	const posting = await prisma.jobPosting.findFirst({
+		where: { id, userId },
+		select: postingDetailSelect,
+	});
+	if (!posting?.bodyMarkdown) return;
+
+	const { summary, category, tags } = await analyzePostingWithLLM(posting);
+
+	await prisma.jobPosting.update({
+		where: { id },
+		data: {
+			summary,
+			category,
+			// Re-analysis replaces the tag set. `set: []` throws P2025 when
+			// combined with connectOrCreate, so disconnect what is there.
+			tags: {
+				disconnect: posting.tags.map(({ id }) => ({ id })),
+				connectOrCreate: tags.map((name) => ({
+					where: { name },
+					create: { name },
+				})),
+			},
+			analyzedAt: new Date(),
+		},
+	});
+};
+
 export const updatePosting = async (
 	userId: string,
 	params: FindPostingParams,
@@ -226,11 +269,15 @@ export const updatePosting = async (
 		workModeRaw,
 		experienceRaw,
 		salaryRaw,
-		locationRaw: _locationRaw,
+		locationRaw,
+		postedAtRaw,
+		applicantCountRaw,
 		...data
 	} = input;
 
-	const bodyExtracted = data.body ? extractFromBody(data.body) : {};
+	const bodyExtracted = data.bodyMarkdown
+		? extractFromBody(data.bodyMarkdown)
+		: {};
 	const rawExtracted = {
 		status: statusRaw ? extractStatus(statusRaw) : null,
 		workMode: workModeRaw ? extractWorkMode(workModeRaw) : null,
@@ -246,11 +293,18 @@ export const updatePosting = async (
 		...data,
 		status,
 		workMode,
+		// Absent location leaves the stored one alone, like the other fields here.
+		...(locationRaw ? extractLocation(locationRaw) : {}),
+		postedAt: postedAtRaw
+			? extractPostedAt(postedAtRaw, data.capturedAt)
+			: undefined,
 		minYearsExperience:
 			rawExtracted.minYearsExperience ??
 			bodyExtracted.minYearsExperience ??
 			undefined,
-		applicantCount: data.applicantCount ?? bodyExtracted.applicantCount,
+		applicantCount:
+			(applicantCountRaw ? extractApplicantCount(applicantCountRaw) : null) ??
+			bodyExtracted.applicantCount,
 		salaryMin:
 			rawExtracted.salary?.min ?? bodyExtracted.salary?.min ?? undefined,
 		salaryMax:
@@ -260,7 +314,7 @@ export const updatePosting = async (
 			bodyExtracted.salary?.currency ??
 			undefined,
 		salaryPeriod:
-			data.body !== undefined
+			data.bodyMarkdown !== undefined
 				? (bodyExtracted.salary?.period ?? null)
 				: undefined,
 		salaryRaw:
@@ -301,21 +355,34 @@ export const updatePosting = async (
 
 	return prisma.jobPosting.findFirst({
 		where: { id, userId },
-		select: postingSelect,
+		select: postingDetailSelect,
 	});
 };
 
 export const deletePosting = async (userId: string, id: string) => {
-	const { count } = await prisma.jobPosting.deleteMany({
-		where: { id, userId },
+	return prisma.$transaction(async (tx) => {
+		const posting = await tx.jobPosting.findFirst({
+			where: { id, userId },
+			select: { id: true },
+		});
+		if (!posting) return false;
+
+		await tx.application.deleteMany({
+			where: { postingId: posting.id },
+		});
+
+		const { count } = await tx.jobPosting.deleteMany({
+			where: { id: posting.id },
+		});
+		return count > 0;
 	});
-	return count > 0;
 };
 
 export default {
 	createOrUpdatePosting,
 	findPostings,
 	findPosting,
+	analyzePosting,
 	updatePosting,
 	deletePosting,
 };

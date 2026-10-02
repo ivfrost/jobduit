@@ -1,26 +1,50 @@
 import type { Request, Response } from 'express';
-import { generateApiKey } from '../lib/apiKey.js';
+import { generateApiKey, generateApiKeyHash } from '../lib/apiKey.js';
 import { prisma } from '../lib/prisma.js';
 import { ApiKeyCreateSchema, ApiKeyRevokeSchema } from '../schemas/apiKey.js';
 
 export const createApiKey = async (req: Request, res: Response) => {
-	const input = ApiKeyCreateSchema.parse(req.body);
-	const { name } = input;
-
+	const { name } = ApiKeyCreateSchema.parse(req.body);
 	const { raw, prefix, keyHash } = generateApiKey();
 
 	const apiKey = await prisma.apiKey.create({
 		data: { userId: req.user.id, name, prefix, keyHash },
 	});
 
-	return res
-		.status(201)
-		.json({ raw: raw, id: apiKey.id, prefix: apiKey.prefix });
+	return res.status(201).json({ raw, id: apiKey.id, prefix: apiKey.prefix });
+};
+
+export const validateApiKey = async (req: Request, res: Response) => {
+	const headerKey = req.headers['x-api-key'];
+	const bearer = req.headers.authorization?.startsWith('Bearer ')
+		? req.headers.authorization.slice(7)
+		: undefined;
+	const raw = typeof headerKey === 'string' ? headerKey : bearer;
+
+	if (!raw) {
+		return res.status(401).json({ error: 'Unauthorized' });
+	}
+
+	const apiKey = await prisma.apiKey.findFirst({
+		where: { keyHash: generateApiKeyHash(raw), revokedAt: null },
+	});
+
+	if (!apiKey) {
+		return res.status(401).json({ error: 'Invalid API key' });
+	}
+
+	await prisma.apiKey.update({
+		where: { id: apiKey.id },
+		data: { lastUsedAt: new Date() },
+	});
+
+	return res.status(200).json({ message: 'API key is valid' });
 };
 
 export const listApiKeys = async (req: Request, res: Response) => {
 	const apiKeys = await prisma.apiKey.findMany({
 		where: { userId: req.user.id },
+		orderBy: { createdAt: 'desc' },
 		select: {
 			id: true,
 			name: true,
@@ -30,13 +54,13 @@ export const listApiKeys = async (req: Request, res: Response) => {
 			revokedAt: true,
 		},
 	});
-	res.json(apiKeys);
+	return res.json(apiKeys);
 };
 
 export const revokeApiKey = async (req: Request, res: Response) => {
 	const { id } = ApiKeyRevokeSchema.parse(req.params);
 
-	const apiKey = await prisma.apiKey.findUnique({
+	const apiKey = await prisma.apiKey.findFirst({
 		where: { id, userId: req.user.id },
 	});
 
@@ -45,9 +69,6 @@ export const revokeApiKey = async (req: Request, res: Response) => {
 	}
 	if (apiKey.revokedAt) {
 		return res.status(400).json({ error: 'API key already revoked' });
-	}
-	if (apiKey.userId !== req.user.id) {
-		return res.status(403).json({ error: 'Forbidden' });
 	}
 
 	await prisma.apiKey.update({

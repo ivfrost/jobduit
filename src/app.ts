@@ -5,9 +5,11 @@ import express, {
 	type Response,
 } from 'express';
 import session from 'express-session';
+import morgan from 'morgan';
 import swaggerUi from 'swagger-ui-express';
 import { ZodError } from 'zod';
 import { corsOptions } from './lib/cors.js';
+import { env } from './lib/env.js';
 import { sessionConfig } from './lib/session.js';
 import { requireAuth } from './middlewares/requireAuth.js';
 import { openApiDocument } from './openapi.js';
@@ -16,6 +18,13 @@ import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 
+if (env.NODE_ENV === 'development') {
+	app.use(morgan('dev'));
+} else {
+	app.use(morgan('combined'));
+}
+
+app.use(express.json());
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(session(sessionConfig));
@@ -42,6 +51,17 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 			fields[key].push(issue.message);
 		}
 		return res.status(400).json({ error: 'Invalid input', fields });
+	}
+
+	if (
+		err &&
+		typeof err === 'object' &&
+		'statusCode' in err &&
+		typeof err.statusCode === 'number' &&
+		'message' in err &&
+		typeof err.message === 'string'
+	) {
+		return res.status(err.statusCode).json({ error: err.message });
 	}
 
 	console.error(err);

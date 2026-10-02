@@ -10,10 +10,11 @@ export const findOrCreateCompany = async (
 	input: CreateCompanyInput,
 	client: PrismaClientOrTx = prisma,
 ) => {
-	const { name, city, country } = input;
+	const name = input.name.trim();
+	const { city, country } = input;
 
 	const existing = await client.company.findFirst({
-		where: { userId, name },
+		where: { userId, name: { equals: name, mode: 'insensitive' } },
 		select: { id: true, name: true, city: true, country: true },
 	});
 	if (existing) return { ...existing, isNew: false };

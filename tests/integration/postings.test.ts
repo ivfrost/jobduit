@@ -83,7 +83,7 @@ describe('Postings API', () => {
 				title: basePosting.title,
 				sourceUrl: basePosting.sourceUrl,
 				source: null,
-				company: { name: 'Acme', city: '', country: '' },
+				company: { name: 'Acme' },
 			});
 		});
 
@@ -94,7 +94,7 @@ describe('Postings API', () => {
 				.send({
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/enriched-detail',
-					body: 'Fully remote role. Salary: €60,000 per year.',
+					bodyMarkdown: 'Fully remote role. Salary: €60,000 per year.',
 				})
 				.expect(201);
 
@@ -124,11 +124,64 @@ describe('Postings API', () => {
 				company: { name: 'Acme' },
 				tags: [],
 			});
-			expect(res.body).not.toHaveProperty('body');
+			expect(res.body.bodyMarkdown).toBe(
+				'Fully remote role. Salary: €60,000 per year.',
+			);
 			expect(res.body).not.toHaveProperty('salaryRaw');
 			expect(res.body).toHaveProperty('contentHash');
 			expect(res.body).toHaveProperty('updatedAt');
 			expect(res.body).toHaveProperty('lastCheckedAt');
+		});
+
+		it('normalizes the captured location onto the posting', async () => {
+			const res = await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({ ...basePosting, locationRaw: 'Remote - Barcelona, Spain' })
+				.expect(201);
+
+			expect(res.body).toMatchObject({
+				city: 'Barcelona',
+				country: 'ES',
+			});
+		});
+
+		it('never clobbers enrichment or tags on re-capture', async () => {
+			const created = await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send(basePosting)
+				.expect(201);
+
+			const tag = await testPrisma.jobTag.create({ data: { name: 'backend' } });
+			await testPrisma.jobPosting.update({
+				where: { id: created.body.id },
+				data: {
+					summary: 'A backend role.',
+					category: 'ENGINEERING',
+					analyzedAt: new Date('2026-10-01T12:00:00.000Z'),
+					tags: { connect: { id: tag.id } },
+				},
+			});
+
+			// The extension re-captures the same page.
+			await request(testApp)
+				.post('/api/postings')
+				.set('Cookie', cookie)
+				.send({ ...basePosting, title: 'Backend Engineer II' })
+				.expect(200);
+
+			const posting = await testPrisma.jobPosting.findFirstOrThrow({
+				where: { id: created.body.id },
+				include: { tags: true },
+			});
+			expect(posting).toMatchObject({
+				title: 'Backend Engineer II',
+				summary: 'A backend role.',
+				category: 'ENGINEERING',
+				analyzedAt: new Date('2026-10-01T12:00:00.000Z'),
+			});
+			expect(posting.tags.map((t) => t.name)).toEqual(['backend']);
 		});
 
 		it('updates instead of duplicating on repeated save', async () => {
@@ -217,10 +270,9 @@ describe('Postings API', () => {
 				})
 				.expect(201);
 
-			expect(res.body.company).toMatchObject({
+			expect(res.body.company).toEqual({
+				id: expect.any(String),
 				name: 'Initech',
-				city: '',
-				country: '',
 			});
 		});
 
@@ -280,7 +332,7 @@ describe('Postings API', () => {
 				.send({
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/with-body',
-					body:
+					bodyMarkdown:
 						'Fully remote role. 5+ years of experience required. ' +
 						'Salary: €60,000 - €80,000 per year.',
 				})
@@ -303,7 +355,7 @@ describe('Postings API', () => {
 				.send({
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/monthly-salary',
-					body:
+					bodyMarkdown:
 						'5+ years of experience required. ' +
 						'Salary: €5,000 - €7,000 per month.',
 				})
@@ -320,7 +372,7 @@ describe('Postings API', () => {
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/explicit-wins',
 					workModeRaw: 'Onsite',
-					body: 'Fully remote position',
+					bodyMarkdown: 'Fully remote position',
 				})
 				.expect(201);
 
@@ -351,7 +403,7 @@ describe('Postings API', () => {
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/salary-without-period',
 					salaryRaw: '100k-150k USD',
-					body: 'Salary range: 100k-150k USD.',
+					bodyMarkdown: 'Salary range: 100k-150k USD.',
 				})
 				.expect(201);
 
@@ -376,7 +428,7 @@ describe('Postings API', () => {
 			const updated = await request(testApp)
 				.put(`/api/postings/${created.body.id}`)
 				.set('Cookie', cookie)
-				.send({ body: '3+ years of experience required' })
+				.send({ bodyMarkdown: '3+ years of experience required' })
 				.expect(200);
 
 			expect(updated.body.minYearsExperience).toBe(3);
@@ -389,7 +441,7 @@ describe('Postings API', () => {
 				.send({
 					...basePosting,
 					sourceUrl: 'https://example.com/jobs/update-salary-period',
-					body: 'Salary: €60,000 - €80,000 per year.',
+					bodyMarkdown: 'Salary: €60,000 - €80,000 per year.',
 				})
 				.expect(201);
 
@@ -398,7 +450,7 @@ describe('Postings API', () => {
 			const updated = await request(testApp)
 				.put(`/api/postings/${created.body.id}`)
 				.set('Cookie', cookie)
-				.send({ body: 'Salary range: €60,000 - €80,000.' })
+				.send({ bodyMarkdown: 'Salary range: €60,000 - €80,000.' })
 				.expect(200);
 
 			expect(updated.body.salaryPeriod).toBeNull();
