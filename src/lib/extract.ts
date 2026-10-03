@@ -1,3 +1,5 @@
+import { countries, getCountryCode } from 'countries-list';
+
 export type SalaryPeriod = 'YEAR' | 'MONTH' | 'DAY' | 'HOUR';
 export type WorkMode = 'REMOTE' | 'HYBRID' | 'ONSITE';
 export type PostingStatus = 'OPEN' | 'CLOSED';
@@ -82,27 +84,105 @@ export const extractMinYears = (body: string): number | null => {
 	return null;
 };
 
-export const extractApplicantCount = (body: string): number | null => {
-	const m = body.match(
-		/\b(\d+(?:[.,]\d+)?)\s*([km])?\s*(?:applicants?|candidates?)\b/i,
+export const extractApplicantCount = (
+	raw: string | null | undefined,
+): number | null => {
+	if (!raw) return null;
+	const t = raw.trim();
+	if (!t) return null;
+
+	// Anchored: "42 applicants", "Over 2k candidates", "200+ applicants".
+	const m = t.match(
+		/\b(\d+(?:[.,]\d+)?)\s*\+?\s*([km])?\s*(?:applicants?|candidates?)\b/i,
 	);
-	if (!m?.[1]) return null;
+	if (m?.[1]) {
+		const n = Number(m[1].replace(',', '.'));
+		if (Number.isFinite(n)) return Math.round(applySuffix(n, m[2] ?? ''));
+	}
 
-	const n = Number(m[1].replace(',', '.'));
-	if (!Number.isFinite(n)) return null;
+	// LinkedIn's current phrasing: "Over 100 people clicked apply".
+	const clickedApply = t.match(
+		/\b(\d+(?:[.,]\d+)?)\s*(?:people\s+clicked\s+apply)\b/i,
+	);
+	if (clickedApply?.[1]) {
+		const n = Number(clickedApply[1].replace(',', '.'));
+		if (Number.isFinite(n)) return Math.round(n);
+	}
 
-	return Math.round(applySuffix(n, m[2] ?? ''));
+	// Bare label: "100+", "100", "2k". Only when the whole value is the count,
+	// so a body like "5+ years" never matches here.
+	const bare = t.match(/^(\d+(?:[.,]\d+)?)\s*\+?\s*([km])?$/i);
+	if (bare?.[1]) {
+		const n = Number(bare[1].replace(',', '.'));
+		if (Number.isFinite(n)) {
+			return Math.round(applySuffix(n, bare[2] ?? ''));
+		}
+	}
+
+	return null;
 };
 
-const CLOSED_RE =
-	/\b(?:closed|filled|expired|no\s+longer\s+(?:accepting|available|hiring)|position\s+(?:has\s+been\s+)?filled|applications?\s+(?:are\s+)?closed|(?:job|role|position)\s+is\s+closed|this\s+posting\s+has\s+expired)\b/i;
-const OPEN_RE =
-	/\b(?:open|active|now\s+hiring|actively\s+hiring|accepting\s+applications|apply\s+(?:now|today))\b/i;
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 
-export const extractStatus = (body: string): PostingStatus | null => {
-	const t = body.toLowerCase();
-	if (CLOSED_RE.test(t)) return 'CLOSED';
-	if (OPEN_RE.test(t)) return 'OPEN';
+const UNIT_MS: Record<string, number> = {
+	second: SECOND,
+	minute: MINUTE,
+	hour: HOUR,
+	day: DAY,
+	week: 7 * DAY,
+	month: 30 * DAY,
+	year: 365 * DAY,
+};
+
+// "1 day ago", "3 weeks ago", "today", "yesterday", or an absolute date. The
+// reference (default: now) anchors the relative cases; callers pass capturedAt.
+const RELATIVE_RE =
+	/(?:a|an|one|(\d+))\s+(second|minute|hour|day|week|month|year)s?\s+ago/i;
+
+export const extractPostedAt = (
+	raw: string | null | undefined,
+	reference: Date = new Date(),
+): Date | null => {
+	if (!raw) return null;
+	const t = raw.trim();
+	if (!t) return null;
+
+	if (/^(?:just now|now)$/i.test(t)) return reference;
+	if (/^today$/i.test(t)) return reference;
+	if (/^yesterday$/i.test(t)) return new Date(reference.getTime() - DAY);
+
+	const m = t.match(RELATIVE_RE);
+	if (m) {
+		const amount = m[1];
+		const unit = m[2]?.toLowerCase();
+		const n = amount ? Number(amount) : 1;
+		const ms = (unit ? UNIT_MS[unit] : undefined) ?? DAY;
+		return new Date(reference.getTime() - ms * n);
+	}
+
+	const parsed = new Date(t);
+	return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+// Same split as OPEN: prose takes explicit phrases only, because bare "filled"
+// matches "open until filled", which means the opposite.
+const CLOSED_PHRASE_RE =
+	/\b(?:no\s+longer\s+(?:accepting|available|hiring)|applications?\s+(?:are\s+|is\s+)?(?:now\s+)?closed|(?:job|role|position|posting|listing)\s+(?:has\s+been\s+|is\s+|was\s+)?(?:filled|closed)|(?:job|posting|listing)\s+has\s+expired)\b/;
+const CLOSED_FIELD_RE = /^(?:closed|filled|expired)$/;
+// Bare "open"/"active" are everywhere in prose ("open-source", "open to
+// remote", "active since 2015"), so inside a body only explicit hiring phrases
+// count. A captured status field is matched whole instead, since it is just the word.
+const OPEN_PHRASE_RE =
+	/\b(?:now\s+hiring|actively\s+hiring|accepting\s+applications|applications?\s+(?:are\s+|is\s+)?(?:now\s+)?open|(?:job|role|position|posting)\s+is\s+open|open\s+until\s+filled|apply\s+(?:now|today))\b/;
+const OPEN_FIELD_RE = /^(?:open|active)$/;
+
+export const extractStatus = (text: string): PostingStatus | null => {
+	const t = text.toLowerCase().trim();
+	if (CLOSED_FIELD_RE.test(t) || CLOSED_PHRASE_RE.test(t)) return 'CLOSED';
+	if (OPEN_FIELD_RE.test(t) || OPEN_PHRASE_RE.test(t)) return 'OPEN';
 	return null;
 };
 
@@ -300,6 +380,48 @@ export const extractSalary = (
 		};
 	}
 	return null;
+};
+
+export type Location = { city: string | null; country: string | null };
+
+// Boards prefix the location with the work mode: "Remote - Barcelona, Spain".
+// ponytail: also strips a leading "Remote" from a town actually named that
+// (Remote, OR); rare enough to eat.
+const LOCATION_NOISE_RE =
+	/^(?:fully\s+|100%\s+)?(?:remote|hybrid|on-?site|anywhere|worldwide)\b[\s\-–—:•|/,]*/i;
+
+// getCountryCode matches names, aliases and native names ("Spain", "UK",
+// "España") but not ISO codes, so alpha-2 input is checked against the table.
+const toCountryCode = (value: string): string | null => {
+	const trimmed = value.trim();
+	if (/^[a-z]{2}$/i.test(trimmed)) {
+		const code = trimmed.toUpperCase();
+		if (code in countries) return code;
+	}
+	return getCountryCode(trimmed) || null;
+};
+
+// "Barcelona, Spain" → { city: 'Barcelona', country: 'ES' }
+// "Spain" / "Singapore" → country only; "Berlin" → city only.
+export const extractLocation = (raw: string | null | undefined): Location => {
+	if (!raw) return { city: null, country: null };
+
+	const parts = raw
+		.replace(LOCATION_NOISE_RE, '')
+		.split(',')
+		.map((part) => part.trim())
+		.filter(Boolean);
+	const city = parts[0];
+	if (!city) return { city: null, country: null };
+
+	// The country is the trailing segment; a lone segment can be the country
+	// itself. Anything after the city ("Barcelona, Eixample", "Austin, TX") is
+	// region detail we don't store.
+	const country = toCountryCode(parts.at(-1) ?? city);
+	if (!country) return { city, country: null };
+	if (parts.length === 1) return { city: null, country };
+
+	return { city, country };
 };
 
 export const extractFromBody = (

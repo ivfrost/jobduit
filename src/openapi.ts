@@ -15,11 +15,11 @@ import {
 } from './schemas/company.js';
 import { paginationResponseSchema } from './schemas/pagination.js';
 import {
-	createPostingSchema,
-	getPostingParamsSchema,
-	postingDetailResponseSchema,
+	findPostingParamsSchema,
+	postingCapturedSchema,
+	postingDetailedResponseSchema,
 	postingResponseSchema,
-	updatePostingSchema,
+	postingUpdateCapturedSchema,
 } from './schemas/postings.js';
 
 // Named, reusable schemas
@@ -27,7 +27,7 @@ const errorSchema = z.object({ error: z.string() }).meta({ id: 'Error' });
 const userSchema = publicUserSchema.meta({ id: 'User' });
 const companySchema = companyResponseSchema.meta({ id: 'Company' });
 const postingSchema = postingResponseSchema;
-const postingDetailSchema = postingDetailResponseSchema;
+const postingDetailSchema = postingDetailedResponseSchema;
 const apiKeySchema = apiKeyResponseSchema.meta({ id: 'ApiKey' });
 const healthSchema = z.object({ ok: z.literal(true) }).meta({ id: 'Health' });
 
@@ -67,7 +67,7 @@ export const openApiDocument = createDocument(
 
 **Authentication.** Protected endpoints accept an API key sent as \`Authorization: Bearer jd_live_…\`. Issue one via \`POST /api/keys\`.
 
-Session-only endpoints (auth, key management) are not exposed here — they require the \`sid\` cookie set by \`POST /api/auth/login\` and are intended for the web UI, not the extension.`,
+Session-only endpoints (auth, key management) are not exposed here. They require the \`sid\` cookie set by \`POST /api/auth/login\` and are intended for the web UI, not the extension.`,
 		},
 		servers: [{ url: '/' }],
 		components: {
@@ -191,10 +191,13 @@ Session-only endpoints (auth, key management) are not exposed here — they requ
 						'Create a posting. The server computes the canonical URL, content hash, and source ID. ' +
 						'Fields like `workMode`, `minYearsExperience`, and salary are extracted from `body` ' +
 						'when not provided explicitly.',
-					requestBody: { required: true, content: json(createPostingSchema) },
+					requestBody: {
+						required: true,
+						content: json(postingCapturedSchema),
+					},
 					responses: {
-						'200': response('Existing posting updated.', postingSchema),
-						'201': response('Created posting.', postingSchema),
+						'200': response('Existing posting updated.', postingDetailSchema),
+						'201': response('Created posting.', postingDetailSchema),
 						'400': response('Invalid input.', errorSchema),
 						'401': response('Unauthorized.', errorSchema),
 					},
@@ -204,7 +207,7 @@ Session-only endpoints (auth, key management) are not exposed here — they requ
 				get: {
 					tags: ['Job postings'],
 					security: anyAuth,
-					requestParams: { path: getPostingParamsSchema },
+					requestParams: { path: findPostingParamsSchema },
 					responses: {
 						'200': response('Job posting.', postingDetailSchema),
 						'404': response('Posting not found.', errorSchema),
@@ -215,17 +218,20 @@ Session-only endpoints (auth, key management) are not exposed here — they requ
 					security: anyAuth,
 					description:
 						'Update a posting. Extraction fields are re-derived from `body` when it changes.',
-					requestParams: { path: getPostingParamsSchema },
-					requestBody: { required: true, content: json(updatePostingSchema) },
+					requestParams: { path: findPostingParamsSchema },
+					requestBody: {
+						required: true,
+						content: json(postingUpdateCapturedSchema),
+					},
 					responses: {
-						'200': response('Updated posting.', postingSchema),
+						'200': response('Updated posting.', postingDetailSchema),
 						'404': response('Posting not found.', errorSchema),
 					},
 				},
 				delete: {
 					tags: ['Job postings'],
 					security: anyAuth,
-					requestParams: { path: getPostingParamsSchema },
+					requestParams: { path: findPostingParamsSchema },
 					responses: {
 						'204': response('Posting deleted.'),
 						'404': response('Posting not found.', errorSchema),

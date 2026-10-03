@@ -15,7 +15,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --include=dev
       - run: npx prisma generate
         env:
           DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci

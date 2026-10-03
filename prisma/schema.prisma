@@ -43,7 +43,8 @@ model Company {
   user     User         @relation(fields: [userId], references: [id], onDelete: Restrict)
   updatedAt DateTime    @updatedAt @default(now())
 
-  @@unique([userId, name, city, country]) // per user, duplicate but simpler
+  // Name uniqueness is case-insensitive, enforced by a functional index on
+  // lower(name) in a raw migration (Prisma can't declare expression indexes).
 }
 
 model JobPosting {
@@ -61,7 +62,7 @@ model JobPosting {
   title     String
 
   // Scraped
-  body           String?
+  bodyMarkdown   String? // original formatting kept for verbatim reading
   postedAt       DateTime? // informational only, never drives logic
   status         PostingStatus @default(OPEN)
   applicantCount Int?
@@ -176,7 +177,7 @@ model Application {
   userId    String            @db.Uuid
   user      User              @relation(fields: [userId], references: [id], onDelete: Restrict)
   postingId String            @db.Uuid
-  posting   JobPosting        @relation(fields: [postingId], references: [id], onDelete: Restrict)
+  posting   JobPosting        @relation(fields: [postingId], references: [id], onDelete: Cascade)
   status    ApplicationStatus @default(APPLIED) // extension handles "pending"
   notes     ApplicationNote[]
   appliedAt DateTime          @default(now())
